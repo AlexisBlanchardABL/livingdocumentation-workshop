@@ -13,9 +13,12 @@ import org.livingdocumentation.dotdiagram.DotGraph;
 import org.livingdocumentation.dotdiagram.DotGraph.Digraph;
 
 import java.io.File;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static flottio.livingdocumentation.SimpleTemplate.*;
@@ -41,22 +44,12 @@ public class SystemDiagramTest {
 		// Adding all .java files in a source tree (recursively).
 		builder.addSourceTree(new File(SOURCE_TREE));
 
-		final String prefix = PACKAGE_PREFIX;
-		final ImmutableSet<ClassInfo> allClasses = classPath.getTopLevelClassesRecursive(prefix);
+		final ImmutableSet<ClassInfo> allClasses = classPath.getTopLevelClassesRecursive(PACKAGE_PREFIX);
 
 		final Digraph digraph = graph.getDigraph();
 		digraph.setOptions("rankdir=LR");
 
-		final String domainPackageName = prefix + "." + "domain";
-
-		final ImmutableSet<ClassInfo> domain = classPath.getTopLevelClasses(domainPackageName);
-		final Map<ClassInfo, BoundedContext> inventory = new HashMap<>();
-		for (ClassInfo ci : domain) {
-			BoundedContext bc = findBoundedContext(ci);
-			if (bc != null) {
-				inventory.put(ci, bc);
-			}
-		}
+		final Map<ClassInfo, BoundedContext> inventory = getBoundedContextAnnotatedClassInfo(classPath);
 
 		for (ClassInfo classInfo : inventory.keySet()) {
 			final BoundedContext bc = inventory.get(classInfo);
@@ -78,6 +71,16 @@ public class SystemDiagramTest {
 		write("", "context-diagram.html", text);
 	}
 
+	private static Map<ClassInfo, BoundedContext> getBoundedContextAnnotatedClassInfo(ClassPath classPath) {
+		String domainPackageName = PACKAGE_PREFIX + "." + "domain";
+		return classPath.getTopLevelClasses(domainPackageName)
+				.stream()
+				.filter(classInfo -> findBoundedContext(classInfo).isPresent())
+				.collect(
+						Collectors.toMap(Function.identity(), SystemDiagramTest::getBoundedContext)
+				);
+	}
+
 	private static String firstImageIn(String[] strings) {
 		for (String link : strings) {
 			if (link.toLowerCase().endsWith(".png")) {
@@ -87,13 +90,14 @@ public class SystemDiagramTest {
 		return null;
 	}
 
-	private BoundedContext findBoundedContext(ClassInfo ci) {
-		BoundedContext first = null;
-		final BoundedContext[] bc = ci.load().getAnnotationsByType(BoundedContext.class);
-		for (BoundedContext boundedContext : bc) {
-			first = boundedContext;
-		}
-		return first;
+	private static BoundedContext getBoundedContext(ClassInfo classInfo) {
+		return findBoundedContext(classInfo)
+				.orElse(null);
+	}
+
+	private static Optional<BoundedContext> findBoundedContext(ClassInfo classInfo) {
+		return Arrays.stream(classInfo.load().getAnnotationsByType(BoundedContext.class))
+				.findAny();
 	}
 
 	private static String wrap(String words, final int length) {
